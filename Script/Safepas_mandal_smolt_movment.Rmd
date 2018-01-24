@@ -1,6 +1,6 @@
 ---
 title: 'Safepas: Mandal - Smolt movment'
-author: "Kim Magnus Bærum"
+author: "Kim Magnus BÃ¦rum"
 date: ""
 output: html_document
 ---
