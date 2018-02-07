@@ -131,7 +131,7 @@ D$AngDif.norm.C<-Transform2Normal.2p(D$AngDif.C)
 hist(D$AngDif.norm.A)
 hist(D$AngDif.norm.B)
 hist(D$AngDif.norm.C)
-# Doesnt really look normal..
+# Doesnt really look normal, might not be a problem though..
 
 
 tf<-colnames(D)%in%c("FlowSpeed","ke","Len","FF")
@@ -183,7 +183,7 @@ levelplot(gg ~ FlowSpeed * ke, data = new.dat,cuts = 98, region = TRUE,col.regio
 
 gg1<-lme(AngDif.norm~FlowSpeed+ke+Len+FF, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
 gg2<-lme(AngDif.norm~FlowSpeed+ke+Len, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
-gg3<-lme(AngDif.norm~FlowSpeed+ke*Len, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
+gg3<-lme(AngDif.norm.A~FlowSpeed+ke*Len, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
 
 AIC(gg1,gg2,gg3)
 
@@ -194,21 +194,70 @@ AIC(gg1,gg2,gg3)
 ##########################
 library(lme4)
 library(MuMIn)
+library(gridExtra)
+library(ggplot2)
+library(scales)
 # Checking dist
 hist(D$AngDif.A)
 hist(D$AngDif.B)
 hist(D$AngDif.C)
 ## All look rather similar, stomack feeling says non-linear response. Note to self, check model assumptions 
 
+
+### Data exploration ###
+########################
+
+#Check data for "strange fish": Flowspeed
+ggplot(D,aes(x=FlowSpeed,y=AngDif.norm.A,colour=factor(Tag)))+geom_point()+
+  geom_smooth(method="lm",alpha=0.3)+
+  scale_colour_discrete(guide="none")+
+scale_y_continuous(limits=c(-2,20),oob=squish)
+
+## Chaos, needs to look in more goes
+# Looking at first 50 tags, and then next 50 tags
+ggplot(D[D$Tag<50,],aes(x=FlowSpeed,y=AngDif.norm.A,colour=factor(Tag)))+geom_point()+
+  geom_smooth(method="lm",alpha=0.3)+
+  scale_colour_discrete(guide="none")+
+  scale_y_continuous(limits=c(-2,20),oob=squish)
+  
+ggplot(D[D$Tag>50,],aes(x=FlowSpeed,y=AngDif.norm.A,colour=factor(Tag)))+geom_point()+
+  geom_smooth(method="lm",alpha=0.3)+
+  scale_colour_discrete(guide="none")+
+  scale_y_continuous(limits=c(-2,20),oob=squish)
+
+#Check data for "strange fish": ke
+ggplot(D[D$Tag<50,],aes(x=ke,y=AngDif.norm.A,colour=factor(Tag)))+geom_point()+
+  geom_smooth(method="lm",alpha=0.3)+
+  scale_colour_discrete(guide="none")+
+  scale_y_continuous(limits=c(-2,20),oob=squish)
+
+ggplot(D[D$Tag>50,],aes(x=log(ke+1),y=AngDif.norm.A,colour=factor(Tag)))+geom_point()+
+  geom_smooth(method="lm",alpha=0.3)+
+  scale_colour_discrete(guide="none")+
+  scale_y_continuous(limits=c(-2,20),oob=squish)
+## Needs to transform ke 
+
+# Not sure how Len is handled in the model as an effect, as Tag is random (as length is fixed per Tag)
+
+
+
 #check assumptions of best lme mod
-plot(g3) # well...think we need to consider what data goes in to the model
+grid.arrange(plot(g3,type=c("p","smooth")),
+             plot(g3,sqrt(abs(resid(.)))~fitted(.),
+                  type=c("p","smooth"),ylab=expression(sqrt(abs(resid)))),
+             ## "sqrt(abs(resid(x)))"),
+             plot(g3,resid(.,type="pearson")~Tag,
+                  type=c("p","smooth")),
+             qqnorm(g3,abline=c(0,1),
+                    ))
+grid.arrange(plot(ACF(g3),alpha=0.05), #not sure if we actually needs to consider a temporal autocorrelation parameter looking at the plot
+             plot(ACF(gg3,resType="normalized"),alpha=0.05),
+             nrow=1)
 
-qqnorm(resid(g3)) # not to bad from the quick look, but again with the data used
-qqnorm(g3, ~ranef(., level=1))
 
-
+#### New take on modeling
 #quick and dirty...no weights for now, think a better method might be to select out this apriori?
-mod.lmer<-lmer(AngDif.norm.A~FlowSpeed*ke*Len +(1|Tag), data=D)
+mod.lmer<-lmer(AngDif.norm.A~FlowSpeed*log(ke+1)*log(Len) +(1|Tag), data=D)
 options(na.action = "na.fail")
 dmod<-dredge(mod.lmer)
 dmod #fuck, complicated model with all the weights
