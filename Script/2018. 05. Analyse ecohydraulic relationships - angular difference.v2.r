@@ -10,7 +10,8 @@ library(nlme)
 library(lattice)
 library(colorRamps)
 
-DIR<-"M:\\My Documents\\NINA projects\\Safepass\\Data2018\\Processed\\"
+# DIR<-"M:\\My Documents\\NINA projects\\Safepass\\Data2018\\Processed\\"
+DIR <- "../Data/" #This works for my setup..
 
 # CORVIF FUNCTION IS FROM ZUUR ET AL.
 #Library files for courses provided by: Highland Statistics Ltd.
@@ -76,7 +77,7 @@ myvif <- function(mod) {
 ############
 
 Transform2Normal.2p<-function(Ori){
-T.box = boxcoxfit(Ori, lambda2=TRUE)
+T.box = geoR::boxcoxfit(Ori, lambda2=TRUE)
 lambda = T.box$lambda[1]
 lambda2 = T.box$lambda[2]
 if(lambda==0){T.norm = log(Ori + lambda2)}
@@ -84,7 +85,7 @@ if(lambda!=0){T.norm = ((Ori + lambda2) ^ lambda - 1) / lambda}
 return(T.norm)
 }
 
-D <- read.csv(paste(DIR,"NewSmoltData for LME.2018-02-06.csv",sep=""))
+D <- read.csv(paste(DIR, "NewSmoltData for LME.2018-02-06.csv",sep=""))
 
 
 D$PosErr<-apply(cbind(D$PosErrX,D$PosErrY),1,mean,na.rm=TRUE)
@@ -92,7 +93,7 @@ D$Wt<-1/D$PosErr
 
 
 ######## BOXPLOTS
-
+str(DD)
 D$FlowSpeed.c<-">0.5"
 tf<-D$FlowSpeed<0.5; D$FlowSpeed.c[tf]<-"0.4-0.5"
 tf<-D$FlowSpeed<0.4; D$FlowSpeed.c[tf]<-"0.3-0.4"
@@ -123,8 +124,23 @@ Pred<-D[,tf]
 corvif(Pred)
 
 # FIT ALL PREDICTORS
+# HBA: Not sure about the way we use weights here. Is this correct? I usually use a var function like varPower or varExp...
 g1<-lme(AngDif.B.norm~FlowSpeed+ke+eps+FF+Len, weights=~Wt, random=~1 | Tag, method="ML", data=D)
 summary(g1)$tTable
+
+#check the residuals...
+par(mfrow=c(2,3))
+E <- resid(g1, type="normalized")
+plot(E~D$FlowSpeed)
+plot(E~D$ke)
+plot(E~D$eps)
+plot(E~D$Len)
+qqnorm(E)
+acf(E)
+
+# HBA: There are some quite extreme residuals... Seems to come from mainly two fish the smallest and one at around 15 cm
+# HBA: Not sure what to do, but it should probably be looked into, why this is...
+# HBA: As expected, there is strong serial autocorrelation, but the AR1 below might fix that...
 
 # REMOVE FF BECAUSE IT IS NOT STRONGLY SIGNIFICANT
 g2<-lme(AngDif.B.norm~FlowSpeed+ke+Len, weights=~Wt, random=~1 | Tag, method="ML", data=D)
@@ -140,6 +156,7 @@ AIC(g1,g2,g3)
 
 
 # PREDICT FROM MODEL
+### HBA: This is not the same model as g3!!! Main effect ke is missing and this completely switches the effect of the interaction...
 g<-lme(AngDif.B.norm~FlowSpeed+FlowSpeed:ke, weights=~Wt, random=~1 | Tag, method="ML", data=D)
 summary(g)
 
@@ -151,12 +168,13 @@ new.dat<-data.frame(new.dat)
 new.dat$gg<-gg
 
 par(mfrow=c(1,1))
-plot(new.dat$FlowSpeed,new.dat$ke,pch=15,cex=2,col=new.dat$colvec)
+plot(new.dat$FlowSpeed,new.dat$ke,pch=15,cex=2,col=new.dat$colvec) #colvec is missing from new.dat so plot is empty???
 points(D$FlowSpeed,D$ke,pch=1,cex=0.5)
+
 
 colvec<-blue2green2red(100); colvec=colvec[1:99]
 levelplot(gg ~ FlowSpeed * ke, data = new.dat,cuts = 98, region = TRUE,col.regions=colvec)
-
+# This plot is somewhat different is model g3 is used instead of model g...
 
 
 
@@ -164,10 +182,23 @@ levelplot(gg ~ FlowSpeed * ke, data = new.dat,cuts = 98, region = TRUE,col.regio
 # FOLLOWING EXAMPLES INCLUDE AUTOCORRELATION
 # BUT WILL ONLY WORK IF YOU LOTS OF RAM
 ###################
-
-gg1<-lme(AngDif.norm~FlowSpeed+ke+Len+FF, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
-gg2<-lme(AngDif.norm~FlowSpeed+ke+Len, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
-gg3<-lme(AngDif.norm~FlowSpeed+ke*Len, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
+# HBA: changed it to use AngDif.B.norm...
+gg1<-lme(AngDif.B.norm~FlowSpeed+ke+Len+FF, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
+gg2<-lme(AngDif.B.norm~FlowSpeed+ke+Len, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
+gg3<-lme(AngDif.B.norm~FlowSpeed+ke*Len, weights=~Wt, random=~1 | Tag, correlation = corAR1(), method="ML", data=D)
 
 AIC(gg1,gg2,gg3)
+
+
+#check the residuals...
+par(mfrow=c(2,3))
+E <- resid(gg3, type="normalized")
+plot(E~D$FlowSpeed)
+plot(E~D$ke)
+plot(E~D$eps)
+plot(E~D$Len)
+qqnorm(E)
+plot(acf(E)) # A lot better, but still some patterns...
+
+
 
